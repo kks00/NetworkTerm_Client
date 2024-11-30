@@ -11,9 +11,11 @@ struct MessageInfo {
 	unsigned int payload_length;
 };
 
+
 // 메세지 타입 정의
 #define MESSAGE_INFO 1100
 #define SET_USER_NAME 1101
+#define UPLOAD_IMAGE 1102
 
 #define CHATTING			  1000          // 메시지 타입: 채팅
 #define DRAW_LINE             1001			// 메시지 타입: 선
@@ -26,6 +28,7 @@ struct MessageInfo {
 #define DRAW_PARALLELOGRAM    1008 			// 메시지 타입: 평행사변형
 #define DRAW_DIAMOND          1009			// 메시지 타입: 마름모
 #define DRAW_ARROW            1010			// 메시지 타입: 화살표
+
 #define DRAW_ERASER           1011			// 메시지 타입: 지우개
 
 
@@ -50,8 +53,11 @@ struct DRAWLINE_MSG
 	int  x1, y1;
 };
 
-// 사용자 정의 데이터 수신 함수
 int recvn(SOCKET s, char* buf, int len, int flags);
+
+int send_udp_payload(int message_type, char* payload_buf, int payload_size);
+int send_tcp_payload(int message_type, char* payload_buf, int payload_size);
+
 // 오류 출력 함수
 void err_quit(char* msg);
 void err_display(char* msg);

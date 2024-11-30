@@ -2,9 +2,9 @@
 
 #define WM_DRAWIT   (WM_USER+1)            // 사용자 정의 윈도우 메시지
 
-static SOCKET        g_sock_tcp; // 클라이언트 TCP 소켓
-static SOCKET        g_sock_udp; // 클라이언트 UDP 소켓
-static SOCKADDR_IN g_serveraddr;
+SOCKET        g_sock_tcp; // 클라이언트 TCP 소켓
+SOCKET        g_sock_udp; // 클라이언트 UDP 소켓
+SOCKADDR_IN g_serveraddr;
 static char g_username[MSGSIZE];
 
 static HINSTANCE     g_hInst; // 응용 프로그램 인스턴스 핸들
@@ -44,8 +44,8 @@ HBITMAP CreateColorBitmap(int width, int height, COLORREF color);
 void UpdateCurrentColorOption(int selectedColorIndex);
 
 void AddListControlItems(HWND hDlg);
-
 void UpdateCurrentFigureOption(int selectedIndex);
+
 
 // 메인 함수
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
@@ -89,6 +89,70 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	return 0;
 }
 
+
+void draw_bitmap_image(char* filePath) {
+	HBITMAP image_bitmap = (HBITMAP)LoadImageA(NULL, filePath, IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE | LR_CREATEDIBSECTION);
+
+	HDC hdc = GetDC(g_hDrawWnd);
+	HDC memDC = CreateCompatibleDC(hdc);
+	HBITMAP oldBitmap = (HBITMAP)SelectObject(memDC, image_bitmap);
+
+	BITMAP bitmap;
+	GetObject(image_bitmap, sizeof(BITMAP), &bitmap);
+
+	SetStretchBltMode(hdc, HALFTONE);
+
+	RECT rect;
+	if (GetClientRect(g_hDrawWnd, &rect)) {
+		int width = rect.right - rect.left;
+		int height = rect.bottom - rect.top;
+		StretchBlt(hdc, 0, 0, width, height,
+			memDC, 0, 0, bitmap.bmWidth, bitmap.bmHeight, SRCCOPY);
+	}
+
+	SelectObject(memDC, oldBitmap);
+	DeleteDC(memDC);
+}
+
+void upload_image() {
+	char filePath[MAX_PATH] = "";
+	OPENFILENAME ofn = { 0 };
+
+	ofn.lStructSize = sizeof(OPENFILENAME);
+	ofn.hwndOwner = nullptr; // 다이얼로그의 소유자 핸들 (nullptr이면 기본값)
+	ofn.lpstrFilter = "Bitmap Files (*.bmp)\0*.bmp\0";
+	ofn.lpstrFile = filePath;
+	ofn.nMaxFile = MAX_PATH;
+	ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST; // 유효한 파일과 경로만 선택 가능
+	ofn.lpstrDefExt = "bmp"; // 확장자가 없을 경우 기본 확장자 설정
+
+	if (GetOpenFileName(&ofn)) {
+		// 선택한 이미지 파일을 읽어서 TCP로 전송
+		FILE* image_file = fopen(filePath, "rb");
+		if (image_file) {
+			fseek(image_file, 0, SEEK_END);
+			size_t file_size = ftell(image_file);
+			fseek(image_file, 0, SEEK_SET);
+
+			char* buffer = (char*)malloc(file_size);
+			if (buffer) {
+				fread(buffer, sizeof(char), file_size, image_file);
+
+				send_tcp_payload(UPLOAD_IMAGE, buffer, file_size);
+
+				free(buffer);
+			}
+			fclose(image_file);
+		}
+	}
+}
+
+void remove_all() {
+
+}
+
+
+// Dialog 컨트롤 클릭 등 처리
 BOOL CALLBACK DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
     static HWND hButtonIsIPv6;
@@ -160,7 +224,7 @@ BOOL CALLBACK DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
         // 자식 윈도우 생성
         g_hDrawWnd = CreateWindow("MyWndClass", "그림 그릴 윈도우", WS_CHILD,
-            450, 160, 580, 350, hDlg, (HMENU)NULL, g_hInst, NULL);
+            450, 190, 580, 580, hDlg, (HMENU)NULL, g_hInst, NULL);
         if (g_hDrawWnd == NULL) return 1;
         ShowWindow(g_hDrawWnd, SW_SHOW);
         UpdateWindow(g_hDrawWnd);
@@ -253,6 +317,14 @@ BOOL CALLBACK DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
             return TRUE;
 
+		case IDC_UPLOADIMG:
+			upload_image();
+			return TRUE;
+
+		case IDC_REMOVEALL:
+			remove_all();
+			return TRUE;
+
         case IDCANCEL:
             if (MessageBox(hDlg, "정말로 종료하시겠습니까?",
                 "질문", MB_YESNO | MB_ICONQUESTION) == IDYES)
@@ -310,57 +382,6 @@ BOOL CALLBACK DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
     }
 
     return FALSE;
-}
-
-
-// UDP 데이터 전송 함수
-int send_udp_payload(int message_type, char* payload_buf, int payload_size) {
-	MessageInfo message_info;
-	message_info.payload_type = message_type;
-	message_info.payload_length = payload_size;
-
-	// 먼저 고정길이(8바이트)의 메세지 정보(타입, 페이로드 길이)를 전송
-	int retval = sendto(g_sock_udp, (char*)&message_info, sizeof(message_info), 0, (sockaddr*)&g_serveraddr, sizeof(g_serveraddr));
-	if (retval == SOCKET_ERROR) {
-		err_display("[send_udp_payload] send messageinfo");
-		return SOCKET_ERROR;
-	}
-	printf("[%s] sent messageinfo: %d\n", __func__, retval);
-
-	// 페이로드 전송
-	retval = sendto(g_sock_udp, payload_buf, message_info.payload_length, 0, (sockaddr*)&g_serveraddr, sizeof(g_serveraddr));
-	if (retval == SOCKET_ERROR) {
-		err_display("[send_udp_payload] send payload");
-		return SOCKET_ERROR;
-	}
-	printf("[%s] sent payload: %d\n", __func__, retval);
-
-	return retval;
-}
-
-// TCP 데이터 전송 함수
-int send_tcp_payload(int message_type, char* payload_buf, int payload_size) {
-	MessageInfo message_info;
-	message_info.payload_length = payload_size;
-	message_info.payload_type = message_type;
-
-	// 먼저 고정길이(8바이트)의 메세지 정보(타입, 페이로드 길이)를 전송
-	int retval = send(g_sock_tcp, (char*)&message_info, sizeof(message_info), 0);
-	if (retval == SOCKET_ERROR) {
-		err_display("[send_tcp_payload] send messageinfo");
-		return SOCKET_ERROR;
-	}
-	printf("[%s] sent messageinfo: %d\n", __func__, retval);
-
-	// 페이로드 전송
-	retval = send(g_sock_tcp, payload_buf, message_info.payload_length, 0);
-	if (retval == SOCKET_ERROR) {
-		err_display("[send_tcp_payload] send payload");
-		return SOCKET_ERROR;
-	}
-	printf("[%s] sent payload: %d\n", __func__, retval);
-
-	return retval;
 }
 
 
@@ -444,30 +465,34 @@ DWORD WINAPI TCPRecvThread(LPVOID arg)
 
 	while (1) {
 		MessageInfo message_info;
+		memset(&message_info, 0, sizeof(MessageInfo));
+
 		// 고정길이(8바이트)의 메세지 정보(메세지 타입, 페이로드 길이)를 수신
 		retval = recv(g_sock_tcp, (char*)&message_info, sizeof(message_info), 0);
 		if (retval == 0 || retval == SOCKET_ERROR) {
 			return 0;
 		}
 
+		printf("[TCP/%s:%d] Type: %d Length: %d\n", inet_ntoa(g_serveraddr.sin_addr), ntohs(g_serveraddr.sin_port),
+			message_info.payload_type, message_info.payload_length);
+
 		// 페이로드 크기만큼 메모리 동적할당
-		unsigned char* recv_buf = (unsigned char*)malloc(message_info.payload_length);
+		char* recv_buf = (char*)VirtualAlloc(NULL, 0xFFFFFFF, MEM_COMMIT, PAGE_READWRITE);
 		if (!recv_buf) {
-			err_display("UDPRecvThread malloc()");
+			err_display("TCPRecvThread malloc()");
 			continue;
 		}
 
 		// 받은 페이로드 크기만큼 가변 길이 페이로드 받기
-		retval = recv(g_sock_tcp, (char*)recv_buf, message_info.payload_length, 0);
+		retval = recvn(g_sock_tcp, (char*)recv_buf, message_info.payload_length, 0);
 		if (retval == SOCKET_ERROR) {
-			err_display("UDPRecvThread recv()");
+			err_display("TCPRecvThread recv()");
 			continue;
 		}
 
 		// 받은 메시지 출력
-#ifdef DEBUG_MODE
-		printf("[TCP/%s:%d] %s\n", inet_ntoa(g_serveraddr.sin_addr), ntohs(g_serveraddr.sin_port),
-			byteArrayToHexString(recv_buf, message_info.payload_length).c_str());
+#ifdef LOG_PACKET_RAW
+		printf("Payload: %s\n", byteArrayToHexString(recv_buf, message_info.payload_length).c_str());
 #endif
 
 
@@ -475,6 +500,29 @@ DWORD WINAPI TCPRecvThread(LPVOID arg)
 		if (message_info.payload_type == CHATTING) {
 			DisplayText("%s\r\n", recv_buf);
 		}
+
+		// 이미지 파일 수신 처리
+		else if (message_info.payload_type == UPLOAD_IMAGE) {
+			char file_name[MAX_PATH];
+
+			// 비트맵 파일 생성
+			time_t now = time(NULL);
+			struct tm* localTime = localtime(&now);
+			strftime(file_name, sizeof(file_name), "%Y%m%d%H%M%S", localTime);
+			strcat(file_name, ".bmp");
+
+			printf("image file name: %s\n", file_name);
+
+			FILE *image_file = fopen(file_name, "wb");
+			if (image_file) {
+				fwrite(recv_buf, sizeof(char), message_info.payload_length, image_file);
+				fclose(image_file);
+			}
+
+			// 이미지 교체
+			draw_bitmap_image(file_name);
+		}
+
 		// 선 그리기 처리
 		else if ((message_info.payload_type >= DRAW_LINE) && (message_info.payload_type <= DRAW_ARROW)) {
 			draw_msg = (DRAWLINE_MSG*)recv_buf;
@@ -485,7 +533,7 @@ DWORD WINAPI TCPRecvThread(LPVOID arg)
 		}
 
 		// 처리가 끝나면 할당해제
-		free(recv_buf);
+		VirtualFree(recv_buf, 0, MEM_RELEASE);
 	}
 	return 0;
 }
@@ -508,8 +556,6 @@ DWORD WINAPI ChatSendThread(LPVOID arg)
 			SetEvent(g_hReadEvent);
 			continue;
 		}
-
-		printf("[%s] chatting: %s\n", __func__, g_chatmsg.buf);
 
 		send_tcp_payload(CHATTING, g_chatmsg.buf, strlen(g_chatmsg.buf) + 1);
 
@@ -545,7 +591,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		cy = GetDeviceCaps(hDC, VERTRES);
 		hBitmap = CreateCompatibleBitmap(hDC, cx, cy);
 
-		// 메모리 DC 생성
+		// 메모리 DC 생성C
 		hDCMem = CreateCompatibleDC(hDC);
 
 		// 비트맵 선택 후 메모리 DC 화면을 흰색으로 칠함
@@ -838,6 +884,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 		bDrawing = FALSE;
 		return 0;
+
 	case WM_DRAWIT:
 		hDC = GetDC(hWnd);
 
@@ -858,6 +905,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		DeleteObject(hPen);
 		ReleaseDC(hWnd, hDC);
 		return 0;
+
 	case WM_PAINT:
 		hDC = BeginPaint(hWnd, &ps);
 
@@ -868,6 +916,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 		EndPaint(hWnd, &ps);
 		return 0;
+
 	case WM_DESTROY:
 		DeleteObject(hBitmap);
 		DeleteDC(hDCMem);

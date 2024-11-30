@@ -76,13 +76,11 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="Global.h" />
-    <ClInclude Include="Packet_Handler.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="Socket_Utils.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Global.cpp" />
-    <ClCompile Include="Packet_Handler.cpp" />
     <ClCompile Include="PrjClient.cpp" />
     <ClCompile Include="Socket_Utils.cpp" />
   </ItemGroup>
