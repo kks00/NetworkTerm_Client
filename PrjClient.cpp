@@ -573,7 +573,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			g_drawmsg.y0 = y0;
 			g_drawmsg.x1 = x1;
 			g_drawmsg.y1 = y1;
-			send_tcp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
+			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
 
 			x0 = x1;
 			y0 = y1;
@@ -591,7 +591,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			g_drawmsg.y0 = y0;
 			g_drawmsg.x1 = x1;
 			g_drawmsg.y1 = y1;
-			send_tcp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
+			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
 		}
 		else if (g_drawmsg.type == DRAW_ELLIPSE) {
 
@@ -609,28 +609,28 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			g_drawmsg.y0 = y0;
 			g_drawmsg.x1 = x1;
 			g_drawmsg.y1 = y0;
-			send_tcp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
+			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
 
 			// (x1, y0) -> (x1, y1)
 			g_drawmsg.x0 = x1;
 			g_drawmsg.y0 = y0;
 			g_drawmsg.x1 = x1;
 			g_drawmsg.y1 = y1;
-			send_tcp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
+			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
 
 			// (x1, y1) -> (x0, y1)
 			g_drawmsg.x0 = x1;
 			g_drawmsg.y0 = y1;
 			g_drawmsg.x1 = x0;
 			g_drawmsg.y1 = y1;
-			send_tcp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
+			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
 
 			// (x0, y1) -> (x0, y0)
 			g_drawmsg.x0 = x0;
 			g_drawmsg.y0 = y1;
 			g_drawmsg.x1 = x0;
 			g_drawmsg.y1 = y0;
-			send_tcp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
+			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
 		}
 		else if (g_drawmsg.type == DRAW_TRIANGLE) {
 			// 정삼각형 그리기
@@ -640,15 +640,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			// 선 그리기 메시지 보내기
 			g_drawmsg.x0 = x0;	g_drawmsg.y0 = y1;
 			g_drawmsg.x1 = x1;	g_drawmsg.y1 = y1;
-			send_tcp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
+			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
 
 			g_drawmsg.x0 = x0;	g_drawmsg.y0 = y1;
 			g_drawmsg.x1 = x0 + ((x1 - x0) / 2);	g_drawmsg.y1 = y0;
-			send_tcp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
+			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
 
 			g_drawmsg.x0 = x1;	g_drawmsg.y0 = y1;
 			g_drawmsg.x1 = x0 + ((x1 - x0) / 2);	g_drawmsg.y1 = y0;
-			send_tcp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
+			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
 		}
 		else if (g_drawmsg.type == DRAW_RIGHTTRIANGLE) {
 			// 직각 삼각형 그리기
@@ -657,21 +657,21 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			g_drawmsg.y0 = y0;
 			g_drawmsg.x1 = x1;
 			g_drawmsg.y1 = y0;  // y0로 동일하게 설정하여 수평선 만들기
-			send_tcp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
+			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
 
 			// 두 번째 선: (x1, y0) -> (x1, y1) (수직선)
 			g_drawmsg.x0 = x1;
 			g_drawmsg.y0 = y0;  // 수평선 끝 지점에서 시작
 			g_drawmsg.x1 = x1;
 			g_drawmsg.y1 = y1;  // y1로 이동하여 수직선
-			send_tcp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
+			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
 
 			// 세 번째 선: (x1, y1) -> (x0, y0) (대각선)
 			g_drawmsg.x0 = x1;
 			g_drawmsg.y0 = y1;
 			g_drawmsg.x1 = x0;
 			g_drawmsg.y1 = y0;
-			send_tcp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
+			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
 		}
 		else if (g_drawmsg.type == DRAW_STAR) {
 			//별 그리기
@@ -683,19 +683,19 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			g_drawmsg.y0 = y1;
 			g_drawmsg.x1 = x1;
 			g_drawmsg.y1 = y1;  // 밑변
-			send_tcp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
+			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
 
 			g_drawmsg.x0 = x0;
 			g_drawmsg.y0 = y1;
 			g_drawmsg.x1 = x0 + ((x1 - x0) / 2);
 			g_drawmsg.y1 = y0;  // 왼쪽 변
-			send_tcp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
+			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
 
 			g_drawmsg.x0 = x1;
 			g_drawmsg.y0 = y1;
 			g_drawmsg.x1 = x0 + ((x1 - x0) / 2);
 			g_drawmsg.y1 = y0;  // 오른쪽 변
-			send_tcp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
+			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
 
 			// 두 번째 삼각형 (위 방향) - 30% 아래로 이동
 			int offset_y = (int)((y1 - y0) * moveFactor);
@@ -705,19 +705,19 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			g_drawmsg.y0 = y0 + offset_y;  // 이동된 y 값
 			g_drawmsg.x1 = x1;
 			g_drawmsg.y1 = y0 + offset_y;  // 밑변
-			send_tcp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
+			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
 
 			g_drawmsg.x0 = x0;
 			g_drawmsg.y0 = y0 + offset_y;  // 이동된 y 값
 			g_drawmsg.x1 = x0 + ((x1 - x0) / 2);
 			g_drawmsg.y1 = y1 + offset_y;  // 왼쪽 변
-			send_tcp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
+			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
 
 			g_drawmsg.x0 = x1;
 			g_drawmsg.y0 = y0 + offset_y;  // 이동된 y 값
 			g_drawmsg.x1 = x0 + ((x1 - x0) / 2);
 			g_drawmsg.y1 = y1 + offset_y;  // 오른쪽 변
-			send_tcp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
+			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
 
 		}
 		else if (g_drawmsg.type == DRAW_PARALLELOGRAM) {
@@ -727,7 +727,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			g_drawmsg.y0 = y1;
 			g_drawmsg.x1 = x1;
 			g_drawmsg.y1 = y1;  // 아래쪽 변
-			send_tcp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
+			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
 
 			// 평행사변형의 두 번째 변 (왼쪽 위에서 오른쪽 위로)
 			// 첫 번째 변에 대해 일정한 오프셋을 적용하여 평행하게 이동시킴
@@ -736,21 +736,21 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			g_drawmsg.y0 = y0;  // 첫 번째 변의 y 좌표와 동일
 			g_drawmsg.x1 = x1 + offset;
 			g_drawmsg.y1 = y0;  // 두 번째 변도 y 좌표는 동일하게
-			send_tcp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
+			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
 
 			// 평행사변형의 왼쪽 대각선 (왼쪽 아래에서 왼쪽 위로)
 			g_drawmsg.x0 = x0;
 			g_drawmsg.y0 = y1;
 			g_drawmsg.x1 = x0 + offset;
 			g_drawmsg.y1 = y0;  // 왼쪽 대각선
-			send_tcp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
+			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
 
 			// 평행사변형의 오른쪽 대각선 (오른쪽 아래에서 오른쪽 위로)
 			g_drawmsg.x0 = x1;
 			g_drawmsg.y0 = y1;
 			g_drawmsg.x1 = x1 + offset;
 			g_drawmsg.y1 = y0;  // 오른쪽 대각선
-			send_tcp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
+			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
 		}
 		else if (g_drawmsg.type == DRAW_DIAMOND) {
 			// 마름모 그리기
@@ -780,25 +780,25 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			g_drawmsg.y0 = point1_y;
 			g_drawmsg.x1 = point2_x;
 			g_drawmsg.y1 = point2_y;
-			send_tcp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
+			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
 
 			g_drawmsg.x0 = point2_x;
 			g_drawmsg.y0 = point2_y;
 			g_drawmsg.x1 = point3_x;
 			g_drawmsg.y1 = point3_y;
-			send_tcp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
+			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
 
 			g_drawmsg.x0 = point3_x;
 			g_drawmsg.y0 = point3_y;
 			g_drawmsg.x1 = point4_x;
 			g_drawmsg.y1 = point4_y;
-			send_tcp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
+			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
 
 			g_drawmsg.x0 = point4_x;
 			g_drawmsg.y0 = point4_y;
 			g_drawmsg.x1 = point1_x;
 			g_drawmsg.y1 = point1_y;
-			send_tcp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
+			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
 		}
 		else if (g_drawmsg.type == DRAW_ARROW) {
 			// 화살표 그리기
@@ -807,7 +807,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			g_drawmsg.y0 = y0;
 			g_drawmsg.x1 = x1;
 			g_drawmsg.y1 = y1;
-			send_tcp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
+			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
 
 			// 화살촉을 그리기 위해, 시작점과 끝점 간의 각도를 계산
 			double angle = atan2(y1 - y0, x1 - x0);  // 화살표 방향 각도 계산 (radian 단위)
@@ -826,14 +826,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			g_drawmsg.y0 = y1;
 			g_drawmsg.x1 = x_left;
 			g_drawmsg.y1 = y_left;
-			send_tcp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
+			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
 
 			// 오른쪽 화살촉 선
 			g_drawmsg.x0 = x1;
 			g_drawmsg.y0 = y1;
 			g_drawmsg.x1 = x_right;
 			g_drawmsg.y1 = y_right;
-			send_tcp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
+			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
 		}
 
 		bDrawing = FALSE;
