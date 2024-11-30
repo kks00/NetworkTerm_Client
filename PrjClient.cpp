@@ -5,6 +5,7 @@
 static SOCKET        g_sock_tcp; // 클라이언트 TCP 소켓
 static SOCKET        g_sock_udp; // 클라이언트 UDP 소켓
 static SOCKADDR_IN g_serveraddr;
+static char g_username[MSGSIZE];
 
 static HINSTANCE     g_hInst; // 응용 프로그램 인스턴스 핸들
 static HWND          g_hDrawWnd; // 그림을 그릴 윈도우
@@ -95,6 +96,7 @@ BOOL CALLBACK DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
     static HWND hEditPort;
     static HWND hButtonConnect;
     static HWND hEditMsg;
+	static HWND hEditName;
 
 	static HWND hListPenColor;	// 색 선택 리스트
     static HWND hBtnPenColor;   // 사용자 지정 색 선택 버튼
@@ -115,6 +117,7 @@ BOOL CALLBACK DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
         g_hButtonSendMsg = GetDlgItem(hDlg, IDC_SENDMSG);
         hEditMsg = GetDlgItem(hDlg, IDC_MSG);
         g_hEditStatus = GetDlgItem(hDlg, IDC_STATUS);
+		hEditName = GetDlgItem(hDlg, IDC_USERNAME);
 		
 		hListPenColor = GetDlgItem(hDlg, IDC_LIST_COLOR); // 색 선택 리스트
         hBtnPenColor = GetDlgItem(hDlg, IDC_PENCOLOR); // 사용자 지정 색 선택 버튼
@@ -125,9 +128,11 @@ BOOL CALLBACK DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
         heraser = GetDlgItem(hDlg, IDC_RADIOERASER); // 지우개 컨트롤
         hFigurelist = GetDlgItem(hDlg, IDC_LIST2); // 도형 선택 컨트롤
 
-        // 컨트롤 초기화
+        // 채팅, 사용자이름 최대 길이 제한
         SendMessage(hEditMsg, EM_SETLIMITTEXT, MSGSIZE, 0);
-        EnableWindow(g_hButtonSendMsg, FALSE);
+		SendMessage(hEditName, EM_SETLIMITTEXT, MSGSIZE, 0);
+        
+		EnableWindow(g_hButtonSendMsg, FALSE);
         SetDlgItemText(hDlg, IDC_IPADDR, SERVERIPV4);
         SetDlgItemInt(hDlg, IDC_PORT, SERVERPORT, FALSE);
 
@@ -174,9 +179,12 @@ BOOL CALLBACK DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
         case IDC_CONNECT:
             GetDlgItemText(hDlg, IDC_IPADDR, g_ipaddr, sizeof(g_ipaddr));
+			GetDlgItemText(hDlg, IDC_USERNAME, g_username, sizeof(g_username));
             g_port = GetDlgItemInt(hDlg, IDC_PORT, NULL, FALSE);
             g_isIPv6 = SendMessage(hButtonIsIPv6, BM_GETCHECK, 0, 0);
+
             EnableWindow(hBtnPenColor, TRUE);
+
             // 소켓 통신 스레드 시작
             g_hClientThread = CreateThread(NULL, 0, ClientMain, NULL, 0, NULL);
             if (g_hClientThread == NULL) {
@@ -187,10 +195,15 @@ BOOL CALLBACK DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
             else {
                 EnableWindow(hButtonConnect, FALSE);
                 while (g_bStart == FALSE); // 서버 접속 성공 기다림
+
                 EnableWindow(hButtonIsIPv6, FALSE);
                 EnableWindow(hEditIPaddr, FALSE);
                 EnableWindow(hEditPort, FALSE);
-                EnableWindow(g_hButtonSendMsg, TRUE);
+				EnableWindow(hEditPort, FALSE);
+                EnableWindow(hEditName, FALSE);
+
+				EnableWindow(g_hButtonSendMsg, TRUE);
+
                 SetFocus(hEditMsg);
             }
             return TRUE;
@@ -300,6 +313,56 @@ BOOL CALLBACK DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 }
 
 
+// UDP 데이터 전송 함수
+int send_udp_payload(int message_type, char* payload_buf, int payload_size) {
+	MessageInfo message_info;
+	message_info.payload_type = message_type;
+	message_info.payload_length = payload_size;
+
+	// 먼저 고정길이(8바이트)의 메세지 정보(타입, 페이로드 길이)를 전송
+	int retval = sendto(g_sock_udp, (char*)&message_info, sizeof(message_info), 0, (sockaddr*)&g_serveraddr, sizeof(g_serveraddr));
+	if (retval == SOCKET_ERROR) {
+		err_display("[send_udp_payload] send messageinfo");
+		return SOCKET_ERROR;
+	}
+	printf("[%s] sent messageinfo: %d\n", __func__, retval);
+
+	// 페이로드 전송
+	retval = sendto(g_sock_udp, payload_buf, message_info.payload_length, 0, (sockaddr*)&g_serveraddr, sizeof(g_serveraddr));
+	if (retval == SOCKET_ERROR) {
+		err_display("[send_udp_payload] send payload");
+		return SOCKET_ERROR;
+	}
+	printf("[%s] sent payload: %d\n", __func__, retval);
+
+	return retval;
+}
+
+// TCP 데이터 전송 함수
+int send_tcp_payload(int message_type, char* payload_buf, int payload_size) {
+	MessageInfo message_info;
+	message_info.payload_length = payload_size;
+	message_info.payload_type = message_type;
+
+	// 먼저 고정길이(8바이트)의 메세지 정보(타입, 페이로드 길이)를 전송
+	int retval = send(g_sock_tcp, (char*)&message_info, sizeof(message_info), 0);
+	if (retval == SOCKET_ERROR) {
+		err_display("[send_tcp_payload] send messageinfo");
+		return SOCKET_ERROR;
+	}
+	printf("[%s] sent messageinfo: %d\n", __func__, retval);
+
+	// 페이로드 전송
+	retval = send(g_sock_tcp, payload_buf, message_info.payload_length, 0);
+	if (retval == SOCKET_ERROR) {
+		err_display("[send_tcp_payload] send payload");
+		return SOCKET_ERROR;
+	}
+	printf("[%s] sent payload: %d\n", __func__, retval);
+
+	return retval;
+}
+
 
 // 소켓 통신 스레드 함수
 DWORD WINAPI ClientMain(LPVOID arg)
@@ -321,6 +384,9 @@ DWORD WINAPI ClientMain(LPVOID arg)
 	serveraddr.sin_port = htons(g_port);
 	retval = connect(g_sock_tcp, (SOCKADDR *)&serveraddr, sizeof(serveraddr));
 	if(retval == SOCKET_ERROR) err_quit("TCP connect()");
+
+	// 사용자 이름 전송
+	send_tcp_payload(SET_USER_NAME, g_username, strlen(g_username) + 1);
 
 
 	// UDP 소켓 생성
@@ -407,7 +473,7 @@ DWORD WINAPI TCPRecvThread(LPVOID arg)
 
 		// 메시지 처리
 		if (message_info.payload_type == CHATTING) {
-			DisplayText("[받은 메시지] %s\r\n", recv_buf);
+			DisplayText("%s\r\n", recv_buf);
 		}
 		// 선 그리기 처리
 		else if ((message_info.payload_type >= DRAW_LINE) && (message_info.payload_type <= DRAW_ARROW)) {
@@ -422,50 +488,6 @@ DWORD WINAPI TCPRecvThread(LPVOID arg)
 		free(recv_buf);
 	}
 	return 0;
-}
-
-// UDP 데이터 전송 함수
-int send_udp_payload(int message_type, char* payload_buf, int payload_size) {
-	MessageInfo message_info;
-	message_info.payload_type = message_type;
-	message_info.payload_length = payload_size;
-
-	// 먼저 고정길이(8바이트)의 메세지 정보(타입, 페이로드 길이)를 전송
-	int retval = sendto(g_sock_udp, (char*)&message_info, sizeof(message_info), 0, (sockaddr*)&g_serveraddr, sizeof(g_serveraddr));
-	if (retval == SOCKET_ERROR)
-		return 0;
-	printf("[%s] sent messageinfo: %d\n", __func__, retval);
-
-	// 페이로드 전송
-	retval = sendto(g_sock_udp, payload_buf, message_info.payload_length, 0, (sockaddr*)&g_serveraddr, sizeof(g_serveraddr));
-	printf("[%s] sent payload: %d\n", __func__, retval);
-
-	return retval;
-}
-
-// TCP 데이터 전송 함수
-int send_tcp_payload(int message_type, char* payload_buf, int payload_size) {
-	MessageInfo message_info;
-	message_info.payload_length = payload_size;
-	message_info.payload_type = message_type;
-
-	// 먼저 고정길이(8바이트)의 메세지 정보(타입, 페이로드 길이)를 전송
-	int retval = send(g_sock_tcp, (char*)&message_info, sizeof(message_info), 0);
-	if (retval == SOCKET_ERROR) {
-		err_display("ChatSendThread send messageinfo");
-		return SOCKET_ERROR;
-	}
-	printf("[%s] sent messageinfo: %d\n", __func__, retval);
-
-	// 페이로드 전송
-	retval = send(g_sock_tcp, payload_buf, message_info.payload_length, 0);
-	if (retval == SOCKET_ERROR) {
-		err_display("ChatSendThread send payload");
-		return SOCKET_ERROR;
-	}
-	printf("[%s] sent payload: %d\n", __func__, retval);
-	
-	return retval;
 }
 
 // 채팅 전송 스레드
