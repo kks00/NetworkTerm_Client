@@ -8,6 +8,7 @@
 
 // 메시지 타입 정의
 #define MESSAGE_INFO 1100
+
 // TCP전송 메시지 타입 정의
 #define SET_USER_NAME 1101
 #define UPLOAD_IMAGE 1102
@@ -17,6 +18,7 @@
 #define REMOVE_WITHOUT_IMG 1106
 #define SEND_CHAT 1106
 #define RECV_MESSAGE 1107
+#define NAME_ALREADY_EXISTS 1108
 
 // UDP전송 메시지 타입 정의
 #define DRAW_LINE             1001			// 메시지 타입: 선
@@ -29,6 +31,7 @@
 #define DRAW_PARALLELOGRAM    1008 			// 메시지 타입: 평행사변형
 #define DRAW_DIAMOND          1009			// 메시지 타입: 마름모
 #define DRAW_ARROW            1010			// 메시지 타입: 화살표
+
 #define DRAW_ERASER           1011			// 메시지 타입: 지우개
 
 

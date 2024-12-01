@@ -659,6 +659,11 @@ DWORD WINAPI TCPRecvThread(LPVOID arg)
 				draw_bitmap_image((char *)g_last_imagepath.c_str());
 		}
 
+		else if (message_info.payload_type == NAME_ALREADY_EXISTS) {
+			MessageBoxA(NULL, "다른 사용자가 이미 사용중인 이름입니다.\n다른 이름을 사용해주세요.", "오류", MB_OK | MB_ICONERROR);
+			ExitProcess(0); // 클라이언트 종료
+		}
+
 
 		// 처리가 끝나면 할당해제
 		VirtualFree(recv_buf, 0, MEM_RELEASE);
