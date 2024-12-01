@@ -5,7 +5,7 @@
 SOCKET        g_sock_tcp; // 클라이언트 TCP 소켓
 SOCKET        g_sock_udp; // 클라이언트 UDP 소켓
 SOCKADDR_IN g_serveraddr;
-static char g_username[MSGSIZE];
+static char g_username[USERNAMESIZE];
 
 static HINSTANCE     g_hInst; // 응용 프로그램 인스턴스 핸들
 static HWND          g_hDrawWnd; // 그림을 그릴 윈도우
@@ -17,6 +17,8 @@ static BOOL          g_isIPv6; // IPv4 or IPv6 주소?
 static HANDLE        g_hClientThread; // 스레드 핸들
 static volatile BOOL g_bStart; // 통신 시작 여부
 static HANDLE        g_hReadEvent, g_hWriteEvent; // 이벤트 핸들
+static HANDLE        g_hUserList; // 접속중인 사용자 리스트
+static HANDLE        g_hWhispText; // 귓속말 텍스트
 
 static CHAT_MSG       g_chatmsg; // 채팅 메시지 저장
 static DRAWLINE_MSG  g_drawmsg; // 선 그리기 메시지 저장
@@ -151,6 +153,28 @@ void remove_all() {
 
 }
 
+void send_whisp() {
+	// 선택된 항목의 인덱스를 가져오기
+	LRESULT selIndex = SendMessage((HWND)g_hUserList, LB_GETCURSEL, 0, 0);
+	// 선택된 항목이 없는 경우 리턴
+	if (selIndex == LB_ERR)
+		return;
+
+	SEND_WHISP_DATA data;
+
+	// 선택된 항목의 텍스트를 가져오기
+	SendMessage((HWND)g_hUserList, LB_GETTEXT, selIndex, (LPARAM)data.sender_id);
+
+	// 입력한 메시지 가져오기
+	SendMessage((HWND)g_hWhispText, WM_GETTEXT, (WPARAM)MSGSIZE, (LPARAM)data.message);
+
+	// 입력한 내용이 없는 경우 리턴
+	if (strlen(data.message) < 1)
+		return;
+
+	send_tcp_payload(SEND_WHISP, (char *)&data, sizeof(SEND_WHISP_DATA));
+}
+
 
 // Dialog 컨트롤 클릭 등 처리
 BOOL CALLBACK DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -192,9 +216,13 @@ BOOL CALLBACK DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
         heraser = GetDlgItem(hDlg, IDC_RADIOERASER); // 지우개 컨트롤
         hFigurelist = GetDlgItem(hDlg, IDC_LIST2); // 도형 선택 컨트롤
 
+		g_hUserList = GetDlgItem(hDlg, IDC_USERLIST); // 유저 리스트 컨트롤
+		g_hWhispText = GetDlgItem(hDlg, IDC_WHISPTEXT);
+
         // 채팅, 사용자이름 최대 길이 제한
         SendMessage(hEditMsg, EM_SETLIMITTEXT, MSGSIZE, 0);
-		SendMessage(hEditName, EM_SETLIMITTEXT, MSGSIZE, 0);
+		SendMessage((HWND)g_hWhispText, EM_SETLIMITTEXT, MSGSIZE, 0);
+		SendMessage(hEditName, EM_SETLIMITTEXT, USERNAMESIZE, 0);
         
 		EnableWindow(g_hButtonSendMsg, FALSE);
         SetDlgItemText(hDlg, IDC_IPADDR, SERVERIPV4);
@@ -208,6 +236,7 @@ BOOL CALLBACK DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		AddListControlItems(hDlg);
 		AddListColorItems(hDlg);
         EnableWindow(hBtnPenColor, FALSE);
+
         // 윈도우 클래스 등록
         WNDCLASS wndclass;
         wndclass.style = CS_HREDRAW | CS_VREDRAW;
@@ -244,6 +273,11 @@ BOOL CALLBACK DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
         case IDC_CONNECT:
             GetDlgItemText(hDlg, IDC_IPADDR, g_ipaddr, sizeof(g_ipaddr));
 			GetDlgItemText(hDlg, IDC_USERNAME, g_username, sizeof(g_username));
+			if (strlen(g_username) < 1) {
+				MessageBoxA(NULL, "사용자 이름을 입력해주세요.", "오류", MB_OK | MB_ICONERROR);
+				return TRUE;
+			}
+
             g_port = GetDlgItemInt(hDlg, IDC_PORT, NULL, FALSE);
             g_isIPv6 = SendMessage(hButtonIsIPv6, BM_GETCHECK, 0, 0);
 
@@ -323,6 +357,10 @@ BOOL CALLBACK DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 		case IDC_REMOVEALL:
 			remove_all();
+			return TRUE;
+
+		case IDC_SENDWHISP:
+			send_whisp();
 			return TRUE;
 
         case IDCANCEL:
@@ -477,6 +515,7 @@ DWORD WINAPI TCPRecvThread(LPVOID arg)
 			message_info.payload_type, message_info.payload_length);
 
 		// 페이로드 크기만큼 메모리 동적할당
+		// malloc 사용시 크기가 큰 이미지파일 수신할 때 할당이 제대로 이루어지지 않아 Windows API 사용
 		char* recv_buf = (char*)VirtualAlloc(NULL, 0xFFFFFFF, MEM_COMMIT, PAGE_READWRITE);
 		if (!recv_buf) {
 			err_display("TCPRecvThread malloc()");
@@ -505,7 +544,7 @@ DWORD WINAPI TCPRecvThread(LPVOID arg)
 		else if (message_info.payload_type == UPLOAD_IMAGE) {
 			char file_name[MAX_PATH];
 
-			// 비트맵 파일 생성
+			// 수신한 이미지 파일 생성
 			time_t now = time(NULL);
 			struct tm* localTime = localtime(&now);
 			strftime(file_name, sizeof(file_name), "%Y%m%d%H%M%S", localTime);
@@ -521,6 +560,17 @@ DWORD WINAPI TCPRecvThread(LPVOID arg)
 
 			// 이미지 교체
 			draw_bitmap_image(file_name);
+		}
+
+		// 유저 리스트 데이터를 수신했을 때 처리
+		else if (message_info.payload_type == USER_LIST_DATA) {
+			SendMessage((HWND)g_hUserList, LB_RESETCONTENT, 0, 0); // 리스트의 모든 항목 삭제
+
+			char* item_text = strtok(recv_buf, "|");
+			while (item_text != NULL) { // |를 기준으로 문자열 분리
+				SendMessage((HWND)g_hUserList, LB_ADDSTRING, 0, (LPARAM)item_text); // 리스트에 데이터 추가
+				item_text = strtok(NULL, "|");
+			}
 		}
 
 		// 선 그리기 처리

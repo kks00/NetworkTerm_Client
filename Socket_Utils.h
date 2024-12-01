@@ -6,16 +6,13 @@
 #define SERVERIPV6  "::1"
 #define SERVERPORT  9000
 
-struct MessageInfo {
-	unsigned int payload_type;
-	unsigned int payload_length;
-};
-
 
 // 메세지 타입 정의
 #define MESSAGE_INFO 1100
 #define SET_USER_NAME 1101
 #define UPLOAD_IMAGE 1102
+#define USER_LIST_DATA 1103
+#define SEND_WHISP 1104
 
 #define CHATTING			  1000          // 메시지 타입: 채팅
 #define DRAW_LINE             1001			// 메시지 타입: 선
@@ -35,6 +32,13 @@ struct MessageInfo {
 #define BUFSIZE     256                    // 전송 메시지 전체 크기
 #define MSGSIZE     (BUFSIZE-sizeof(int))  // 채팅 메시지 최대 길이
 
+
+// 고정 길이 전송시 사용할 데이터 구조체
+struct MessageInfo {
+	unsigned int payload_type; // 메시지 타입
+	unsigned int payload_length; // 뒤따라올 페이로드의 길이
+};
+
 // 채팅 메시지 형식
 struct CHAT_MSG
 {
@@ -42,7 +46,6 @@ struct CHAT_MSG
 };
 
 // 선 그리기 메시지 형식
-// sizeof(DRAWLINE_MSG) == 256
 struct DRAWLINE_MSG
 {
 	int  type;
@@ -52,6 +55,14 @@ struct DRAWLINE_MSG
 	int  x0, y0;
 	int  x1, y1;
 };
+
+#define USERNAMESIZE 32 // 사용자 이름 최대길이
+// 귓속말 전송 데이터 구조체 정의
+struct SEND_WHISP_DATA {
+	char sender_id[USERNAMESIZE];
+	char message[MSGSIZE];
+};
+
 
 int recvn(SOCKET s, char* buf, int len, int flags);
 

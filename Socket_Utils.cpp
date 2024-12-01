@@ -1,6 +1,6 @@
 #include "Socket_Utils.h"
 
-// 사용자 정의 데이터 수신 함수
+// len 바이트를 수신할 때 까지 리턴하지 않고 계속 recv 시도
 int recvn(SOCKET s, char* buf, int len, int flags)
 {
 	int received;
