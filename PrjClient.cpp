@@ -21,10 +21,11 @@ static HANDLE        g_hUserList; // 접속중인 사용자 리스트
 static HANDLE        g_hWhispText; // 귓속말 텍스트
 
 static CHAT_MSG       g_chatmsg; // 채팅 메시지 저장
-static DRAWLINE_MSG  g_drawmsg; // 선 그리기 메시지 저장
-static int           g_drawcolor; // 선 그리기 색상
-static int           g_drawwidth; // 선 크기 
-static int           g_drawline; // 선  종류
+static DRAWLINE_MSG  g_drawmsg; // 수신한 선 그리기 메시지 저장
+static DRAWLINE_MSG  g_localdrawmsg; // 최근 선택한 선 그리기 메시지 저장
+static int g_drawline;
+static int g_drawwidth;
+static int g_drawcolor;
 
 
 // 대화상자 프로시저
@@ -75,8 +76,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	if(g_hWriteEvent == NULL) return 1;
 
 	// 변수 초기화(일부)
-	g_drawmsg.type = DRAW_LINE;
-	g_drawmsg.color = RGB(255, 0, 0);
+	g_localdrawmsg.type = DRAW_LINE;
+	g_localdrawmsg.color = RGB(255, 0, 0);
+	g_localdrawmsg.width = 10;
 
 	// 대화상자 생성
 	g_hInst = hInstance;
@@ -228,6 +230,11 @@ BOOL CALLBACK DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
         SetDlgItemText(hDlg, IDC_IPADDR, SERVERIPV4);
         SetDlgItemInt(hDlg, IDC_PORT, SERVERPORT, FALSE);
 
+		EnableWindow(GetDlgItem(hDlg, IDC_SENDWHISP), FALSE);
+		EnableWindow(GetDlgItem(hDlg, IDC_UPLOADIMG), FALSE);
+		EnableWindow(GetDlgItem(hDlg, IDC_REMOVEALL), FALSE);
+		EnableWindow(GetDlgItem(hDlg, IDC_REMOVEDRAW), FALSE);
+
         SendMessage(hPen1, BM_SETCHECK, BST_CHECKED, 0);
         SendMessage(hPen2, BM_SETCHECK, BST_UNCHECKED, 0);
         SendMessage(hhhighlighter, BM_SETCHECK, BST_UNCHECKED, 0);
@@ -300,6 +307,11 @@ BOOL CALLBACK DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 				EnableWindow(hEditPort, FALSE);
                 EnableWindow(hEditName, FALSE);
 
+				EnableWindow(GetDlgItem(hDlg, IDC_SENDWHISP), TRUE);
+				EnableWindow(GetDlgItem(hDlg, IDC_UPLOADIMG), TRUE);
+				EnableWindow(GetDlgItem(hDlg, IDC_REMOVEALL), TRUE);
+				EnableWindow(GetDlgItem(hDlg, IDC_REMOVEDRAW), TRUE);
+
 				EnableWindow(g_hButtonSendMsg, TRUE);
 
                 SetFocus(hEditMsg);
@@ -326,17 +338,18 @@ BOOL CALLBACK DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
             HWND hEdit = GetDlgItem(hDlg, IDC_EDIT1);  // IDC_EDIT1에 해당하는 HWND 얻기
             GetWindowText(hEdit, buffer, 256);          // Edit 컨트롤에서 텍스트 가져오기
 
-            g_drawwidth = _ttoi(buffer);               // _ttoi를 사용하여 텍스트를 정수로 변환
+            g_localdrawmsg.width = _ttoi(buffer);               // _ttoi를 사용하여 텍스트를 정수로 변환
             return TRUE;
         }
 
         case IDC_RADIOPEN:
-            g_drawline = PS_SOLID; // 실선
-
+			g_localdrawmsg.line = PS_SOLID; // 실선
             return TRUE;
+
         case IDC_RADIOPEN2:
-            g_drawline = PS_DOT; // 점선
-			g_drawwidth = 1;
+			g_localdrawmsg.line = PS_DOT; // 점선
+			g_localdrawmsg.width = 1;
+			SetWindowText(GetDlgItem(hDlg, IDC_THICK), TEXT("1"));
             return TRUE;
 
         case IDC_RADIOHH:
@@ -344,7 +357,7 @@ BOOL CALLBACK DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
             return TRUE;
 
         case IDC_RADIOERASER:
-			g_drawmsg.type = DRAW_ERASER;
+			g_localdrawmsg.type = DRAW_ERASER;
             return TRUE;
         case IDC_LIST2:
 			//SelectFigureOption(hDlg, g_currentSelectFigureMode);
@@ -499,7 +512,6 @@ DWORD WINAPI ClientMain(LPVOID arg)
 DWORD WINAPI TCPRecvThread(LPVOID arg)
 {
 	int retval;
-	DRAWLINE_MSG* draw_msg;
 
 	while (1) {
 		MessageInfo message_info;
@@ -575,11 +587,14 @@ DWORD WINAPI TCPRecvThread(LPVOID arg)
 
 		// 선 그리기 처리
 		else if ((message_info.payload_type >= DRAW_LINE) && (message_info.payload_type <= DRAW_ARROW)) {
-			draw_msg = (DRAWLINE_MSG*)recv_buf;
-			g_drawcolor = draw_msg->color;
+			memcpy(&g_drawmsg, recv_buf, sizeof(g_drawmsg));
+			g_drawline = g_drawmsg.line;
+			g_drawwidth = g_drawmsg.width;
+			g_drawcolor = g_drawmsg.color;
+
 			SendMessage(g_hDrawWnd, WM_DRAWIT,
-				MAKEWPARAM(draw_msg->x0, draw_msg->y0),
-				MAKELPARAM(draw_msg->x1, draw_msg->y1));
+				MAKEWPARAM(g_drawmsg.x0, g_drawmsg.y0),
+				MAKELPARAM(g_drawmsg.x1, g_drawmsg.y1));
 		}
 
 		// 처리가 끝나면 할당해제
@@ -631,6 +646,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	static int x0, y0;
 	static int x1, y1;
 	static BOOL bDrawing = FALSE;
+
+	// 로컬 설정 가져오기
+	memcpy(&g_drawmsg, &g_localdrawmsg, sizeof(DRAWLINE_MSG));
 
 	switch(uMsg){
 	case WM_CREATE:
@@ -1064,47 +1082,47 @@ HBITMAP CreateColorBitmap(int width, int height, COLORREF color) {
 
 void UpdateCurrentColorOption(int selectedColorIndex)
 {
-	// 색상 인덱스에 맞게 g_drawmsg.color 값을 설정
+	// 색상 인덱스에 맞게 g_localdrawmsg.color 값을 설정
 	switch (selectedColorIndex)
 	{
 	case 0: // 빨강
-		g_drawmsg.color = RGB(255, 0, 0);
+		g_localdrawmsg.color = RGB(255, 0, 0);
 		break;
 	case 1: // 초록
-		g_drawmsg.color = RGB(0, 255, 0);
+		g_localdrawmsg.color = RGB(0, 255, 0);
 		break;
 	case 2: // 파랑
-		g_drawmsg.color = RGB(0, 0, 255);
+		g_localdrawmsg.color = RGB(0, 0, 255);
 		break;
 	case 3: // 노랑
-		g_drawmsg.color = RGB(255, 255, 0);
+		g_localdrawmsg.color = RGB(255, 255, 0);
 		break;
 	case 4: // 청록
-		g_drawmsg.color = RGB(0, 255, 255);
+		g_localdrawmsg.color = RGB(0, 255, 255);
 		break;
 	case 5: // 자홍
-		g_drawmsg.color = RGB(255, 0, 255);
+		g_localdrawmsg.color = RGB(255, 0, 255);
 		break;
 	case 6: // 어두운 빨강
-		g_drawmsg.color = RGB(128, 0, 0);
+		g_localdrawmsg.color = RGB(128, 0, 0);
 		break;
 	case 7: // 어두운 초록
-		g_drawmsg.color = RGB(0, 128, 0);
+		g_localdrawmsg.color = RGB(0, 128, 0);
 		break;
 	case 8: // 어두운 파랑
-		g_drawmsg.color = RGB(0, 0, 128);
+		g_localdrawmsg.color = RGB(0, 0, 128);
 		break;
 	case 9: // 회색
-		g_drawmsg.color = RGB(128, 128, 128);
+		g_localdrawmsg.color = RGB(128, 128, 128);
 		break;
 	default:
-		g_drawmsg.color = RGB(255, 255, 255); // 기본색 (흰색)
-		break;	
+		g_localdrawmsg.color = RGB(255, 255, 255); // 기본색 (흰색)
+		break;
 	}
 
 	// 디버그용 메시지 박스 출력 (선택된 색상 확인)
 	TCHAR buffer[50];
-	_stprintf_s(buffer, _T("선택된 색상: (%d, %d, %d)"), GetRValue(g_drawmsg.color), GetGValue(g_drawmsg.color), GetBValue(g_drawmsg.color));
+	_stprintf_s(buffer, _T("선택된 색상: (%d, %d, %d)"), GetRValue(g_localdrawmsg.color), GetGValue(g_localdrawmsg.color), GetBValue(g_localdrawmsg.color));
 	MessageBox(NULL, buffer, _T("색상 선택"), MB_OK);
 }
 
@@ -1120,9 +1138,9 @@ void SelectPenColor() {
 	cc.hwndOwner = g_hDrawWnd;
 	cc.lpCustColors = customColors;
 	cc.Flags = CC_FULLOPEN | CC_RGBINIT;
-	cc.rgbResult = g_drawmsg.color;
+	cc.rgbResult = g_localdrawmsg.color;
 	if (ChooseColor(&cc)) {
-		g_drawmsg.color = cc.rgbResult;
+		g_localdrawmsg.color = cc.rgbResult;
 	}
 }
 
@@ -1219,43 +1237,43 @@ void UpdateCurrentFigureOption(int selectedIndex)
 	switch (selectedIndex)
 	{
 	case 0: // 선
-		g_drawmsg.type = DRAW_LINE;
+		g_localdrawmsg.type = DRAW_LINE;
 		break;
 	case 1: // 직선
-		g_drawmsg.type = DRAW_STRAIGHTLINE;
+		g_localdrawmsg.type = DRAW_STRAIGHTLINE;
 		break;
 	case 2: // 타원
-		g_drawmsg.type = DRAW_ELLIPSE;
+		g_localdrawmsg.type = DRAW_ELLIPSE;
 		break;
 	case 3: // 사각형
-		g_drawmsg.type = DRAW_RECTANGLE;
+		g_localdrawmsg.type = DRAW_RECTANGLE;
 		break;
 	case 4: // 삼각형
-		g_drawmsg.type = DRAW_TRIANGLE;
+		g_localdrawmsg.type = DRAW_TRIANGLE;
 		break;
 	case 5: // 직각 삼각형
-		g_drawmsg.type = DRAW_RIGHTTRIANGLE;
+		g_localdrawmsg.type = DRAW_RIGHTTRIANGLE;
 		break;
 	case 6: // 별
-		g_drawmsg.type = DRAW_STAR;
+		g_localdrawmsg.type = DRAW_STAR;
 		break;
 	case 7: // 평행사변형
-		g_drawmsg.type = DRAW_PARALLELOGRAM;
+		g_localdrawmsg.type = DRAW_PARALLELOGRAM;
 		break;
 	case 8: // 마름모
-		g_drawmsg.type = DRAW_DIAMOND;
+		g_localdrawmsg.type = DRAW_DIAMOND;
 		break;
 	case 9: // 화살표
-		g_drawmsg.type = DRAW_ARROW;
+		g_localdrawmsg.type = DRAW_ARROW;
 		break;
 	default:
-		g_drawmsg.type = -1; // 잘못된 선택
+		g_localdrawmsg.type = -1; // 잘못된 선택
 		break;
 	}
 
 	// 디버그용 메시지 박스 출력 (선택 확인)
 	TCHAR buffer[50];
-	_stprintf_s(buffer, _T("선택된 옵션: %d"), g_drawmsg.type);
+	_stprintf_s(buffer, _T("선택된 옵션: %d"), g_localdrawmsg.type);
 	MessageBox(NULL, buffer, _T("도형 선택"), MB_OK);
 }
 
