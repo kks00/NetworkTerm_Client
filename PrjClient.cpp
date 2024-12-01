@@ -1,6 +1,7 @@
 #include "Global.h"
 
 #define WM_DRAWIT   (WM_USER+1)            // 사용자 정의 윈도우 메시지
+#define WM_CLEARBOARD   (WM_USER+2)            // 사용자 정의 윈도우 메시지
 
 SOCKET        g_sock_tcp; // 클라이언트 TCP 소켓
 SOCKET        g_sock_udp; // 클라이언트 UDP 소켓
@@ -27,6 +28,10 @@ static int g_drawline;
 static int g_drawwidth;
 static int g_drawcolor;
 
+static HDC g_hDC;
+
+static string g_last_imagepath;
+
 
 // 대화상자 프로시저
 BOOL CALLBACK DlgProc(HWND, UINT, WPARAM, LPARAM);
@@ -38,8 +43,6 @@ DWORD WINAPI TCPRecvThread(LPVOID arg);
 DWORD WINAPI ChatSendThread(LPVOID arg);
 // 자식 윈도우 프로시저
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
-// 편집 컨트롤 출력 함수
-void DisplayText(char *fmt, ...);
 
 
 void AddListColorItems(HWND hDlg);
@@ -64,6 +67,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 		setbuf(stdout, NULL);
 	}
 #endif
+	// RichEdit을 위한 library import
+	LoadLibrary(TEXT("Msftedit.dll"));
 
 	// 윈속 초기화
 	WSADATA wsa;
@@ -151,10 +156,6 @@ void upload_image() {
 	}
 }
 
-void remove_all() {
-
-}
-
 void send_whisp() {
 	// 선택된 항목의 인덱스를 가져오기
 	LRESULT selIndex = SendMessage((HWND)g_hUserList, LB_GETCURSEL, 0, 0);
@@ -177,6 +178,58 @@ void send_whisp() {
 	send_tcp_payload(SEND_WHISP, (char *)&data, sizeof(SEND_WHISP_DATA));
 }
 
+void send_remove_all() {
+	bool data = true;
+	send_tcp_payload(REMOVE_ALL, (char*)&data, sizeof(data));
+}
+
+void send_remove_draw() {
+	bool data = true;
+	send_tcp_payload(REMOVE_WITHOUT_IMG, (char*)&data, sizeof(data));
+}
+
+// STATUS 컨트롤에 텍스트 추가하는 함수
+void AddColoredTextToRichEdit(std::string text, COLORREF color) {
+	static int new_line_count = 0;
+
+	text += "\r\n";
+
+	// 현재 텍스트 길이를 가져와 추가할 위치를 설정
+	LONG startTextLength = GetWindowTextLength(g_hEditStatus);
+
+	// 새 텍스트 추가 (줄바꿈 문자 포함된 경우에도 정확하게 처리)
+	SendMessage(g_hEditStatus, EM_SETSEL, startTextLength, startTextLength); // 커서를 텍스트 끝으로 이동
+	SendMessage(g_hEditStatus, EM_REPLACESEL, FALSE, (LPARAM)text.c_str()); // 텍스트 추가
+	new_line_count += 1;
+
+	// 텍스트 범위 선택
+	startTextLength = (new_line_count > 1) ? (startTextLength - new_line_count * 2) : (startTextLength);
+	LONG endTextLength = GetWindowTextLength(g_hEditStatus) - 2;
+	SendMessage(g_hEditStatus, EM_SETSEL, startTextLength, endTextLength);
+
+	// 추가한 텍스트에 색상 적용
+	CHARFORMAT2 cf; // CHARFORMAT2 구조체 사용
+	cf.cbSize = sizeof(CHARFORMAT2);
+	cf.dwMask = CFM_COLOR; // 텍스트 색상 설정만 활성화
+	cf.crTextColor = color; // 지정된 색상 적용
+	cf.dwEffects = 0; // 기본 효과 해제
+	SendMessage(g_hEditStatus, EM_SETCHARFORMAT, SCF_SELECTION, (LPARAM)&cf);
+
+	// 선택 해제
+	 SendMessage(g_hEditStatus, EM_SETSEL, -1, 0); // 선택 해제
+}
+
+void ChangeFont(HWND hwndRichEdit)
+{
+	CHARFORMAT2 cf;
+	ZeroMemory(&cf, sizeof(cf));
+	cf.cbSize = sizeof(cf);
+	cf.dwMask = CFM_FACE;  // 폰트 이름과 크기만 변경
+	strcpy(cf.szFaceName, "맑은 고딕"); // 폰트 이름
+
+	// EM_SETCHARFORMAT 메시지를 보내어 폰트 변경
+	SendMessage(hwndRichEdit, EM_SETCHARFORMAT, SCF_ALL, (LPARAM)&cf);
+}
 
 // Dialog 컨트롤 클릭 등 처리
 BOOL CALLBACK DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -199,6 +252,14 @@ BOOL CALLBACK DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
     switch (uMsg) {
     case WM_INITDIALOG:
+		g_hEditStatus = CreateWindowExW(
+			0, MSFTEDIT_CLASS, TEXT(L""),
+			ES_READONLY | ES_MULTILINE | ES_AUTOHSCROLL | WS_VSCROLL | ES_AUTOVSCROLL | WS_VISIBLE | WS_CHILD,
+			15, 280, 420, 450,
+			hDlg, NULL, g_hInst, NULL
+		); // RichEdit 생성
+		ChangeFont(g_hEditStatus);
+
         // 컨트롤 핸들 얻기
         hButtonIsIPv6 = GetDlgItem(hDlg, IDC_ISIPV6);
         hEditIPaddr = GetDlgItem(hDlg, IDC_IPADDR);
@@ -206,7 +267,6 @@ BOOL CALLBACK DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
         hButtonConnect = GetDlgItem(hDlg, IDC_CONNECT);
         g_hButtonSendMsg = GetDlgItem(hDlg, IDC_SENDMSG);
         hEditMsg = GetDlgItem(hDlg, IDC_MSG);
-        g_hEditStatus = GetDlgItem(hDlg, IDC_STATUS);
 		hEditName = GetDlgItem(hDlg, IDC_USERNAME);
 		
 		hListPenColor = GetDlgItem(hDlg, IDC_LIST_COLOR); // 색 선택 리스트
@@ -359,9 +419,9 @@ BOOL CALLBACK DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
         case IDC_RADIOERASER:
 			g_localdrawmsg.type = DRAW_ERASER;
             return TRUE;
+
         case IDC_LIST2:
 			//SelectFigureOption(hDlg, g_currentSelectFigureMode);
-
             return TRUE;
 
 		case IDC_UPLOADIMG:
@@ -369,7 +429,11 @@ BOOL CALLBACK DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			return TRUE;
 
 		case IDC_REMOVEALL:
-			remove_all();
+			send_remove_all();
+			return TRUE;
+
+		case IDC_REMOVEDRAW:
+			send_remove_draw();
 			return TRUE;
 
 		case IDC_SENDWHISP:
@@ -412,22 +476,9 @@ BOOL CALLBACK DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	}
 	return TRUE;
 
-
-
     case WM_CTLCOLORSTATIC:
         switch (GetDlgCtrlID((HWND)lParam)) {
-        case IDC_STATUS:
-        {
-            HDC hdcStatic = (HDC)wParam;
-            // 배경 색상 변경 
-            SetBkColor(hdcStatic, RGB(120, 120, 120));  // RGB 값으로 색 지정
-
-            // 텍스트 색상 변경 
-            SetTextColor(hdcStatic, RGB(0, 255, 0));  // 텍스트 색을 검은색으로
-
-            // 배경색을 설정하는 브러시 반환
-            return (LRESULT)CreateSolidBrush(RGB(120, 120, 120));  // 배경색을 지정한 색으로 설정
-        }
+			
         }
         break;
     }
@@ -548,8 +599,9 @@ DWORD WINAPI TCPRecvThread(LPVOID arg)
 
 
 		// 메시지 처리
-		if (message_info.payload_type == CHATTING) {
-			DisplayText("%s\r\n", recv_buf);
+		if (message_info.payload_type == RECV_MESSAGE) {
+			CHAT_MSG* chat_msg = (CHAT_MSG *)recv_buf;
+			AddColoredTextToRichEdit(chat_msg->buf, chat_msg->color);
 		}
 
 		// 이미지 파일 수신 처리
@@ -561,8 +613,8 @@ DWORD WINAPI TCPRecvThread(LPVOID arg)
 			struct tm* localTime = localtime(&now);
 			strftime(file_name, sizeof(file_name), "%Y%m%d%H%M%S", localTime);
 			strcat(file_name, ".bmp");
-
 			printf("image file name: %s\n", file_name);
+			g_last_imagepath = file_name;
 
 			FILE *image_file = fopen(file_name, "wb");
 			if (image_file) {
@@ -597,6 +649,17 @@ DWORD WINAPI TCPRecvThread(LPVOID arg)
 				MAKELPARAM(g_drawmsg.x1, g_drawmsg.y1));
 		}
 
+		else if (message_info.payload_type == REMOVE_ALL)
+			SendMessage(g_hDrawWnd, WM_CLEARBOARD, NULL, NULL);
+
+		else if (message_info.payload_type == REMOVE_WITHOUT_IMG) {
+			if (g_last_imagepath.length() < 1)
+				SendMessage(g_hDrawWnd, WM_CLEARBOARD, NULL, NULL);
+			else
+				draw_bitmap_image((char *)g_last_imagepath.c_str());
+		}
+
+
 		// 처리가 끝나면 할당해제
 		VirtualFree(recv_buf, 0, MEM_RELEASE);
 	}
@@ -622,7 +685,8 @@ DWORD WINAPI ChatSendThread(LPVOID arg)
 			continue;
 		}
 
-		send_tcp_payload(CHATTING, g_chatmsg.buf, strlen(g_chatmsg.buf) + 1);
+		g_chatmsg.color = RGB(0, 0, 0);
+		send_tcp_payload(SEND_CHAT, (char *)&g_chatmsg, sizeof(g_chatmsg));
 
 		// '메시지 전송' 버튼 활성화
 		EnableWindow(g_hButtonSendMsg, TRUE);
@@ -641,6 +705,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	PAINTSTRUCT ps;
 	RECT rect;
 	HPEN hPen, hOldPen;
+	HBRUSH hBrush;
 	static HBITMAP hBitmap;
 	static HDC hDCMem;
 	static int x0, y0;
@@ -653,6 +718,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	switch(uMsg){
 	case WM_CREATE:
 		hDC = GetDC(hWnd);
+		g_hDC = hDC;
 
 		// 화면을 저장할 비트맵 생성
 		cx = GetDeviceCaps(hDC, HORZRES);
@@ -953,6 +1019,18 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		bDrawing = FALSE;
 		return 0;
 
+	case WM_CLEARBOARD:
+		hDC = GetDC(hWnd); // 클라이언트 DC 얻기
+
+		// 클라이언트 영역 전체를 흰색으로 칠하기
+		GetClientRect(hWnd, &rect);
+		hBrush = CreateSolidBrush(RGB(255, 255, 255));
+		FillRect(hDC, &rect, hBrush);
+
+		DeleteObject(hBrush); // 브러시 해제
+		ReleaseDC(hWnd, hDC); // DC 해제
+		return 0;
+
 	case WM_DRAWIT:
 		hDC = GetDC(hWnd);
 
@@ -993,22 +1071,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	}
 
 	return DefWindowProc(hWnd, uMsg, wParam, lParam);
-}
-
-// 에디트 컨트롤에 문자열 출력
-void DisplayText(char *fmt, ...)
-{
-	va_list arg;
-	va_start(arg, fmt);
-
-	char cbuf[1024];
-	vsprintf(cbuf, fmt, arg);
-
-	int nLength = GetWindowTextLength(g_hEditStatus);
-	SendMessage(g_hEditStatus, EM_SETSEL, nLength, nLength);
-	SendMessage(g_hEditStatus, EM_REPLACESEL, FALSE, (LPARAM)cbuf);
-
-	va_end(arg);
 }
 
 void AddListColorItems(HWND hDlg) {
@@ -1121,9 +1183,9 @@ void UpdateCurrentColorOption(int selectedColorIndex)
 	}
 
 	// 디버그용 메시지 박스 출력 (선택된 색상 확인)
-	TCHAR buffer[50];
-	_stprintf_s(buffer, _T("선택된 색상: (%d, %d, %d)"), GetRValue(g_localdrawmsg.color), GetGValue(g_localdrawmsg.color), GetBValue(g_localdrawmsg.color));
-	MessageBox(NULL, buffer, _T("색상 선택"), MB_OK);
+	//TCHAR buffer[50];
+	//_stprintf_s(buffer, _T("선택된 색상: (%d, %d, %d)"), GetRValue(g_localdrawmsg.color), GetGValue(g_localdrawmsg.color), GetBValue(g_localdrawmsg.color));
+	//MessageBox(NULL, buffer, _T("색상 선택"), MB_OK);
 }
 
 
@@ -1272,8 +1334,8 @@ void UpdateCurrentFigureOption(int selectedIndex)
 	}
 
 	// 디버그용 메시지 박스 출력 (선택 확인)
-	TCHAR buffer[50];
-	_stprintf_s(buffer, _T("선택된 옵션: %d"), g_localdrawmsg.type);
-	MessageBox(NULL, buffer, _T("도형 선택"), MB_OK);
+	//TCHAR buffer[50];
+	//_stprintf_s(buffer, _T("선택된 옵션: %d"), g_localdrawmsg.type);
+	//MessageBox(NULL, buffer, _T("도형 선택"), MB_OK);
 }
 

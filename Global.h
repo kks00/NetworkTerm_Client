@@ -1,7 +1,7 @@
 #pragma once
 
  // 디버깅 콘솔 생성여부
-// #define DEBUG_MODE
+ // #define DEBUG_MODE
 // #define LOG_PACKET_RAW
 
 #pragma comment(lib, "ws2_32")
@@ -19,6 +19,9 @@
 #include <time.h>
 
 #include <commctrl.h> // ListView 관련 정의
+#include <richedit.h>
+
+#include <fstream>
 
 #include <string>
 using namespace std;
