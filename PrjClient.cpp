@@ -24,6 +24,7 @@ static HANDLE        g_hWhispText; // 귓속말 텍스트
 static CHAT_MSG       g_chatmsg; // 채팅 메시지 저장
 static DRAWLINE_MSG  g_drawmsg; // 수신한 선 그리기 메시지 저장
 static DRAWLINE_MSG  g_localdrawmsg; // 최근 선택한 선 그리기 메시지 저장
+static int g_drawtype;
 static int g_drawline;
 static int g_drawwidth;
 static int g_drawcolor;
@@ -166,7 +167,7 @@ void send_whisp() {
 	SEND_WHISP_DATA data;
 
 	// 선택된 항목의 텍스트를 가져오기
-	SendMessage((HWND)g_hUserList, LB_GETTEXT, selIndex, (LPARAM)data.sender_id);
+	SendMessage((HWND)g_hUserList, LB_GETTEXT, selIndex, (LPARAM)data.receiver_id);
 
 	// 입력한 메시지 가져오기
 	SendMessage((HWND)g_hWhispText, WM_GETTEXT, (WPARAM)MSGSIZE, (LPARAM)data.message);
@@ -252,12 +253,13 @@ BOOL CALLBACK DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
     switch (uMsg) {
     case WM_INITDIALOG:
+		// 채팅을 표시하기 위한 RichEdit 생성
 		g_hEditStatus = CreateWindowExW(
 			0, MSFTEDIT_CLASS, TEXT(L""),
 			ES_READONLY | ES_MULTILINE | ES_AUTOHSCROLL | WS_VSCROLL | ES_AUTOVSCROLL | WS_VISIBLE | WS_CHILD,
 			15, 280, 420, 450,
 			hDlg, NULL, g_hInst, NULL
-		); // RichEdit 생성
+		);
 		ChangeFont(g_hEditStatus);
 
         // 컨트롤 핸들 얻기
@@ -391,7 +393,6 @@ BOOL CALLBACK DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
         case IDC_PENCOLOR:
             SelectPenColor();
             return TRUE;
-
 
         case IDC_EDIT1: {
             TCHAR buffer[256];        // TCHAR 배열로 선언
@@ -638,8 +639,9 @@ DWORD WINAPI TCPRecvThread(LPVOID arg)
 		}
 
 		// 선 그리기 처리
-		else if ((message_info.payload_type >= DRAW_LINE) && (message_info.payload_type <= DRAW_ARROW)) {
+		else if ((message_info.payload_type >= DRAW_LINE) && (message_info.payload_type <= DRAW_ELLIPSE)) {
 			memcpy(&g_drawmsg, recv_buf, sizeof(g_drawmsg));
+			g_drawtype = g_drawmsg.type;
 			g_drawline = g_drawmsg.line;
 			g_drawwidth = g_drawmsg.width;
 			g_drawcolor = g_drawmsg.color;
@@ -777,9 +779,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			g_drawmsg.x1 = x1;
 			g_drawmsg.y1 = y1;
 			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
-		}
-		else if (g_drawmsg.type == DRAW_ELLIPSE) {
-
 		}
 		else if (g_drawmsg.type == DRAW_RECTANGLE) {
 			// 사각형의 네 점 계산
@@ -1020,6 +1019,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			g_drawmsg.y1 = y_right;
 			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
 		}
+		else if (g_drawmsg.type == DRAW_ELLIPSE) {
+			g_drawmsg.x0 = x0;
+			g_drawmsg.y0 = y0;
+			g_drawmsg.x1 = x1;
+			g_drawmsg.y1 = y1;
+			send_udp_payload(g_drawmsg.type, (char*)&g_drawmsg, sizeof(g_drawmsg));
+		}
 
 		bDrawing = FALSE;
 		return 0;
@@ -1041,17 +1047,23 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 		hPen = CreatePen(g_drawline, g_drawwidth, g_drawcolor);
 
-		// 화면에 그리기
-		hOldPen = (HPEN)SelectObject(hDC, hPen);
-		MoveToEx(hDC, LOWORD(wParam), HIWORD(wParam), NULL);
-		LineTo(hDC, LOWORD(lParam), HIWORD(lParam));
-		SelectObject(hDC, hOldPen);
+		if (g_drawtype >= DRAW_LINE && g_drawtype <= DRAW_ARROW) { // 선 그리기
+			// 화면에 그리기
+			hOldPen = (HPEN)SelectObject(hDC, hPen);
+			MoveToEx(hDC, LOWORD(wParam), HIWORD(wParam), NULL);
+			LineTo(hDC, LOWORD(lParam), HIWORD(lParam));
+			SelectObject(hDC, hOldPen);
+		}
+		else if (g_drawtype == DRAW_ELLIPSE) {
+			hOldPen = (HPEN)SelectObject(hDC, hPen);
 
-		// 메모리 비트맵에 그리기
-		hOldPen = (HPEN)SelectObject(hDCMem, hPen);
-		MoveToEx(hDCMem, LOWORD(wParam), HIWORD(wParam), NULL);
-		LineTo(hDCMem, LOWORD(lParam), HIWORD(lParam));
-		SelectObject(hDC, hOldPen);
+			// 브러시를 NULL로 설정하여 내부 비우기
+			HBRUSH hBrush = (HBRUSH)GetStockObject(NULL_BRUSH);
+			SelectObject(hDC, hBrush);
+
+			Ellipse(hDC, LOWORD(wParam), HIWORD(wParam), LOWORD(lParam), HIWORD(lParam));
+			SelectObject(hDC, hOldPen);
+		}
 
 		DeleteObject(hPen);
 		ReleaseDC(hWnd, hDC);

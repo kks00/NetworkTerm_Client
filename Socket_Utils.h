@@ -16,21 +16,21 @@
 #define SEND_WHISP 1104
 #define REMOVE_ALL 1105
 #define REMOVE_WITHOUT_IMG 1106
-#define SEND_CHAT 1106
-#define RECV_MESSAGE 1107
-#define NAME_ALREADY_EXISTS 1108
+#define SEND_CHAT 1107
+#define RECV_MESSAGE 1108
+#define NAME_ALREADY_EXISTS 1109
 
 // UDP전송 메시지 타입 정의
 #define DRAW_LINE             1001			// 메시지 타입: 선
 #define DRAW_STRAIGHTLINE     1002			// 메시지 타입: 직선
-#define DRAW_ELLIPSE          1003			// 메시지 타입: 타원
-#define DRAW_RECTANGLE        1004			// 메시지 타입: 사각형
-#define DRAW_TRIANGLE         1005 			// 메시지 타입: 삼각형
-#define DRAW_RIGHTTRIANGLE    1006 			// 메시지 타입: 직각 삼각형
-#define DRAW_STAR             1007 			// 메시지 타입: 별
-#define DRAW_PARALLELOGRAM    1008 			// 메시지 타입: 평행사변형
-#define DRAW_DIAMOND          1009			// 메시지 타입: 마름모
-#define DRAW_ARROW            1010			// 메시지 타입: 화살표
+#define DRAW_RECTANGLE        1003			// 메시지 타입: 사각형
+#define DRAW_TRIANGLE         1004 			// 메시지 타입: 삼각형
+#define DRAW_RIGHTTRIANGLE    1005 			// 메시지 타입: 직각 삼각형
+#define DRAW_STAR             1006 			// 메시지 타입: 별
+#define DRAW_PARALLELOGRAM    1007 			// 메시지 타입: 평행사변형
+#define DRAW_DIAMOND          1008			// 메시지 타입: 마름모
+#define DRAW_ARROW            1009			// 메시지 타입: 화살표
+#define DRAW_ELLIPSE          1010			// 메시지 타입: 타원
 
 #define DRAW_ERASER           1011			// 메시지 타입: 지우개
 
@@ -66,8 +66,8 @@ struct DRAWLINE_MSG
 #define USERNAMESIZE 32 // 사용자 이름 최대길이
 // 귓속말 전송 데이터 구조체 정의
 struct SEND_WHISP_DATA {
-	char sender_id[USERNAMESIZE];
-	char message[MSGSIZE];
+	char receiver_id[USERNAMESIZE]; // 수신자 ID
+	char message[MSGSIZE]; // 메시지 데이터
 };
 
 
