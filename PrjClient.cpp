@@ -220,16 +220,17 @@ void AddColoredTextToRichEdit(std::string text, COLORREF color) {
 	 SendMessage(g_hEditStatus, EM_SETSEL, -1, 0); // 선택 해제
 }
 
-void ChangeFont(HWND hwndRichEdit)
+void SetRichEditStyle(HWND hwndRichEdit)
 {
-	CHARFORMAT2 cf;
-	ZeroMemory(&cf, sizeof(cf));
-	cf.cbSize = sizeof(cf);
-	cf.dwMask = CFM_FACE;  // 폰트 이름과 크기만 변경
-	strcpy(cf.szFaceName, "맑은 고딕"); // 폰트 이름
+	HFONT hFont = CreateFont(
+		-15, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, // FW_BOLD로 굵게 설정
+		DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,
+		CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, "맑은 고딕");
 
-	// EM_SETCHARFORMAT 메시지를 보내어 폰트 변경
-	SendMessage(hwndRichEdit, EM_SETCHARFORMAT, SCF_ALL, (LPARAM)&cf);
+	SendMessage(hwndRichEdit, WM_SETFONT, (WPARAM)hFont, TRUE);
+
+	COLORREF bgColor = RGB(255, 255, 200); // 연한 노란색
+	SendMessage(hwndRichEdit, EM_SETBKGNDCOLOR, 0, (LPARAM)bgColor);
 }
 
 // Dialog 컨트롤 클릭 등 처리
@@ -260,7 +261,7 @@ BOOL CALLBACK DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			15, 280, 420, 450,
 			hDlg, NULL, g_hInst, NULL
 		);
-		ChangeFont(g_hEditStatus);
+		SetRichEditStyle(g_hEditStatus);
 
         // 컨트롤 핸들 얻기
         hButtonIsIPv6 = GetDlgItem(hDlg, IDC_ISIPV6);
@@ -413,14 +414,6 @@ BOOL CALLBACK DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			SetWindowText(GetDlgItem(hDlg, IDC_THICK), TEXT("1"));
             return TRUE;
 
-        case IDC_RADIOHH:
-
-            return TRUE;
-
-        case IDC_RADIOERASER:
-			g_localdrawmsg.type = DRAW_ERASER;
-            return TRUE;
-
         case IDC_LIST2:
 			//SelectFigureOption(hDlg, g_currentSelectFigureMode);
             return TRUE;
@@ -487,6 +480,37 @@ BOOL CALLBACK DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
     return FALSE;
 }
 
+DWORD WINAPI BROADCAST_RECV(LPVOID arg) {
+	// 소켓옵션활용: 공지 수신용 브로드캐스트 UDP 소켓 생성
+
+	SOCKET sock = socket(AF_INET, SOCK_DGRAM, 0);
+	if (sock == INVALID_SOCKET) err_quit("BROADCAST_RECV socket()");
+
+	DWORD bEnable = 1;
+	int retval = setsockopt(sock, SOL_SOCKET, SO_BROADCAST, (char*)&bEnable, sizeof(bEnable));
+	if (retval == SOCKET_ERROR) err_quit("BROADCAST_RECV setsockopt()");
+
+	// 브로드캐스트 주소 초기화
+	SOCKADDR_IN broadcastAddr;
+	ZeroMemory(&broadcastAddr, sizeof(broadcastAddr));
+	broadcastAddr.sin_family = AF_INET;
+	broadcastAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+	broadcastAddr.sin_port = htons(BROADCASTPORT);
+	retval = bind(sock, (sockaddr*)&broadcastAddr, sizeof(broadcastAddr));
+	if (retval == SOCKET_ERROR) err_quit("BROADCAST_RECV bind()");
+
+	while (true) {
+		char message[MSGSIZE];
+		memset(message, 0, MSGSIZE);
+
+		SOCKADDR_IN peer_addr;
+		int addrlen = sizeof(peer_addr);
+		retval = recvfrom(sock, message, MSGSIZE, 0, (sockaddr*)&peer_addr, &addrlen);
+		if (retval == SOCKET_ERROR) err_display("BROADCAST_RECV recvfrom()");
+
+		AddColoredTextToRichEdit(string("[공지] ") + message, RGB(255, 0, 0));
+	}
+}
 
 // 소켓 통신 스레드 함수
 DWORD WINAPI ClientMain(LPVOID arg)
@@ -522,6 +546,8 @@ DWORD WINAPI ClientMain(LPVOID arg)
 	g_serveraddr.sin_addr.s_addr = inet_addr(g_ipaddr);
 	g_serveraddr.sin_port = htons(g_port);
 
+	HANDLE broadcast_thread = CreateThread(NULL, 0, BROADCAST_RECV, NULL, 0, NULL);
+
 	MessageBox(NULL, "서버에 접속했습니다.", "성공!", MB_ICONINFORMATION);
 
 	// 읽기 & 쓰기 스레드 생성
@@ -544,6 +570,8 @@ DWORD WINAPI ClientMain(LPVOID arg)
 		TerminateThread(hThread[1], 1);
 	else
 		TerminateThread(hThread[0], 1);
+	TerminateThread(broadcast_thread, 1);
+	CloseHandle(broadcast_thread);
 	CloseHandle(hThread[0]);
 	CloseHandle(hThread[1]);
 

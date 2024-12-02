@@ -5,6 +5,7 @@
 #define SERVERIPV4  "127.0.0.1"
 #define SERVERIPV6  "::1"
 #define SERVERPORT  9000
+#define BROADCASTPORT 8999
 
 // 메시지 타입 정의
 #define MESSAGE_INFO 1100
@@ -31,8 +32,6 @@
 #define DRAW_DIAMOND          1008			// 메시지 타입: 마름모
 #define DRAW_ARROW            1009			// 메시지 타입: 화살표
 #define DRAW_ELLIPSE          1010			// 메시지 타입: 타원
-
-#define DRAW_ERASER           1011			// 메시지 타입: 지우개
 
 
 #define BUFSIZE     256                    // 전송 메시지 전체 크기
